@@ -27,6 +27,12 @@
 				((= n 0) (cons element (cdr list)))
 				(t (cons (car list) (rewrite-element (- n 1) element (cdr list))))))
 
+(defun stair-list (max &key (start 0))
+	(if (= start max) nil
+			(cons start (stair-list max :start (1+ start)))))
+
+;; loading
+
 (load "core.lisp")
 (load "ai.lisp")
 (load "main.lisp")

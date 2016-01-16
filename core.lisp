@@ -1,9 +1,9 @@
 
 ;;;; data-base  ;;;;;;;;;;;;;;;;;;;;;;;;;
-(defparameter *side* 3)
+(defparameter *side* 2)
 (defparameter *player-a* 'A)
 (defparameter *player-b* 'B)
-(defparameter *blank* nil)
+(defparameter *blank* 'N)
 
 (defparameter *default-board* (make-list *side* :initial-element
 																				 (make-list *side* :initial-element *blank*)))
