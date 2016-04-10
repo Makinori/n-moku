@@ -13,9 +13,14 @@
 
 (defparameter *default-board*
 	(make-array *board-hex-num* :initial-element *buffer*))
-(defparameter *default-board*	#(0 1 2
-																0 2 1
-																0 0 1))
+#|(defparameter *default-board*	#(2 0 0 1
+																0 2 1 0
+																0 2 0 0
+                                1 0 1 0))
+|#
+(defparameter *default-board* #(2 1 2
+                                0 1 0
+                                0 2 1))
 
 
 (defparameter *board-hex-array*
@@ -33,14 +38,6 @@
 							(append add-b	  t-add-b
 											(slant-lines add-b *board-size*)
                       (slant-lines y-r-add-b *board-size*)))))
-
-
-(defstruct game-tree
-	(player 0)
-	(moving nil)
-	(board *default-board*)
-	(evaluation 0)
-	(tree nil))
 
 
 ;;;; core
@@ -86,55 +83,61 @@
 				*win-lines*))
 
 ;;;; tree
-(defparameter *win-state* 100)
-(defparameter *lose-state* (- *win-state*))
-(defparameter *draw-state* 0)
+(defstruct game-tree
+	(player 0)
+  (stair 0)
+	(moving nil)
+	(board *default-board*)
+	(evaluation 0)
+	(tree nil))
 
+(defun game-tree (player stair moving board)
+  (make-game-tree
+   :player player
+   :moving moving
+   :board board
+   :stair stair
+   :evaluation (eval-board player stair board)
+   :tree (if (win-judge player board)
+             nil
+             (passing-moves player (1+ stair) board))))
 
-(defun game-tree (player moving board)
-	(let* ((eval (eval-board player board)))
-		(make-game-tree
-		 :player player
-		 :moving moving
-		 :board board
-		 :evaluation eval
-		 :tree (if (= *draw-state* eval)
-							 (passing-moves board player)
-							 nil))))
-
-
-(defun passing-moves (board player)
+(defun passing-moves (player stair board)
 	(let* ((next-player (change-player player))
 				 (able-moves (putable-address board)))
 		(mapcar
 		 #'(lambda (moving)
-				 (game-tree next-player moving (put-to-board next-player moving board)))
+				 (game-tree next-player stair moving (put-to-board next-player moving board)))
 		 able-moves)))
 
-;;;; ai
 
-(defun eval-board (player board)
-	(cond ((win-judge player board) *win-state*)
-				(t *draw-state*)))
+;;;; ai
+(defparameter *win-point* 100)
+(defparameter *draw-point* 0)
+
+(defun eval-board (player stair board)
+	(cond ((win-judge player board) (- *win-point* stair))
+				(t *draw-point*)))
+
 
 (defun rate-position (player tree)
 	(let ((players-turn? (equal player (game-tree-player tree)) )
 				(moves (game-tree-tree tree))
 				(eval  (game-tree-evaluation tree)))
 		(cond
-			((null moves) eval)
-			(t (apply (if players-turn?
-                    #'max #'min)
-                (get-ratings player tree))))))
+			((null moves) (cons eval (game-tree-moving tree)))
+      (t (reduce #'(lambda (x y)
+                     (if (> (car x) (car y))
+                         x y))
+                 (get-ratings player tree))))))
 
-					
 (defun get-ratings (player tree)
 	(mapcar #'(lambda (move)
 						(rate-position player move ))
 					(game-tree-tree tree)))
 
 (defun rate-test ()
-  (let ((tree (game-tree *player-a* '() *default-board*)))
+  (let ((tree (game-tree *player-a* 0 '() *default-board*)))
     (show-tree tree)
     (format t "A: ~d~%B: ~d" 
             (rate-position *player-a* tree)
@@ -145,10 +148,31 @@
 	(print-info tree)
 	(let ((next-moves (game-tree-tree tree)))
 		(cond ((null next-moves)
-					 (if (= *draw-state* (game-tree-evaluation tree))
+					 (if (win-judge (game-tree-player tree) (game-tree-board tree))
 							 (announce-draw)
 							 (announce-winner (game-tree-player tree))))
 					(t (human-vs-human (handle-human tree))))))
+
+(defun human-vs-computer (tree players-turn?)
+  (print-info tree)
+  (cond ((null (game-tree-tree tree))
+         (if (win-judge (game-tree-player tree) (game-tree-board tree))
+             (announce-winner (game-tree-player tree))
+             (announce-draw)))
+        (t (human-vs-computer
+            (funcall (if players-turn? #'handle-human #'handle-computer) tree)
+            (not players-turn?)))))
+
+(defun computer-vs-computer (tree)
+  (print-info tree)
+  (cond ((null (game-tree-tree tree))
+         (if (win-judge (game-tree-player tree) (game-tree-board tree))
+             (announce-winner (game-tree-player tree))
+             (announce-draw)))
+        (t (computer-vs-computer
+            (handle-computer tree)))))
+
+
 
 (defun handle-human (tree)
 	(fresh-line)
@@ -163,23 +187,13 @@
 		(nth (1- (read)) moves)))
 
 
-(defun human-vs-computer (tree)
-  (print-info tree)
-  (let ((human-way (handle-human tree)))
-    (print-info human-way)
-    (human-vs-human (handle-computer (game-tree-player human-way) human-way))
-  ))
+(defun handle-computer (tree)
+  (let* ((rate-position (cdr (rate-position (game-tree-player tree) tree)))
+         (game-tree-list (game-tree-tree tree)))
+    (do ((i 0 (1+ i)))
+        ((= rate-position (game-tree-moving (nth i game-tree-list)))
+           (nth i game-tree-list)))))
 
-(defun computer-vs-computer (tree)
-  (print-info tree)
-  (if (= (game-tree-evaluation tree) *win-state*)
-      (announce-winner (game-tree-player tree))
-      (computer-vs-computer
-       (handle-computer (game-tree-player tree) tree))))
-
-(defun handle-computer (player tree)
-  (let ((ratings (get-ratings player tree)))
-    (nth (position (apply #'max ratings) ratings) (game-tree-tree tree))))
 
 (defun announce-draw ()
 	(format t "~%this game is draw ~%~%"))
@@ -189,14 +203,12 @@
 
 (defun print-info (tree)
 	(format t "~%")
-	(draw-board (game-tree-board tree))
- 	(format t "~%cullent-player = ~a" (player-latter (change-player (game-tree-player tree)))))
+  (format t "~%cullent-player = ~a"
+          (player-latter (change-player (game-tree-player tree))))
+	(draw-board (game-tree-board tree)))
+
 
 ;;;; test
-(defun test ()
-	(time (progn
-					(game-tree *player-a* nil *default-board*)
-					nil)))
 
 (defun show-tree (tree &optional (stage 0))
 	(let ((player (game-tree-player tree))
@@ -206,9 +218,26 @@
 				(next-tree-list (game-tree-tree tree))
 				(indent (concatenate 'string (loop for x below stage collect #\_))))
 		(format t "~d player:~d   moving:~d   board:~d  eval:~d~%"
-						indent player moving board evaluation)
-		
+						indent player moving board evaluation)		
 		(mapcar #'(lambda (tr)
 								(show-tree tr (+ stage 4)))
 						next-tree-list)
 		nil))
+
+
+(defun ai-test (tree)
+  (labels 
+      ((com-vs-com (tr)
+         (format t "~% Player:~r, moving:~d, board:~a, eval:~d"
+                 (game-tree-player tr)
+                 (game-tree-moving tr)
+                 (game-tree-board tr)
+                 (game-tree-evaluation tr))
+       (cond ((null (game-tree-tree tr))
+              (if (win-judge (game-tree-player tr) (game-tree-board tr))
+                  (announce-winner (game-tree-player tr))
+                  (announce-draw)))
+             (t (com-vs-com
+                 (handle-computer tr))))))
+    (time (com-vs-com tree))))
+
