@@ -1,4 +1,6 @@
+;;(in-package :n-moku)
 ;;;; utility
+(in-package #:n-moku)
 
 ;;; Matrix calculation
 
