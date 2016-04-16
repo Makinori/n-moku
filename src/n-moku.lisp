@@ -15,7 +15,7 @@
 	(make-array *board-hex-num* :initial-element *buffer*))
 (defparameter *default-board*	#(0 0 0 0
 																0 2 1 0
-																0 2 1 0
+																0 1 2 0
                                 0 0 0 0))
 
 (defparameter *board-hex-array*
@@ -250,8 +250,11 @@
 
 
 (defun ai-test (tree)
-  (time (com-vs-com tree)))
+  (com-vs-com tree))
 
+(defun profile-n-moku ()
+  (time (ai-test (game-tree *player-a* 0  '() *default-board*))))
+  
 (defun com-vs-com (tree)
   (format t "~% Player:~r, moving:~d, board:~a, eval:~d"
           (game-tree-player tree)

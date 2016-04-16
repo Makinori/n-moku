@@ -14,10 +14,18 @@
   
   :depends-on ()
   
-  :components ((:file "package")
-               (:file "util")
-               (:file "lazy")
-               (:file "n-moku" :depends-on ("util"))))
-  
+  :serial t
+  :components
+  ((:file "package")
+   (:module lib
+    :pathname "lib"
+              :components ((:file "util")
+                           (:file "lazy")))
+   (:module src
+    :pathname "src"
+              :components ((:file "n-moku")))))
+
+
+
 
 
