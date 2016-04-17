@@ -7,7 +7,7 @@
   (let ((forced (gensym))
         (value (gensym)))
     `(let ((,forced nil)
-           (,value nli))
+           (,value nil))
       (lambda ()
         (unless ,forced
           (setf ,value (progn ,@body))
