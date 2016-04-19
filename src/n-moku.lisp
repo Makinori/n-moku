@@ -3,8 +3,8 @@
 
 ;;;; parameters
 (defparameter *num-players* 2)
-(defparameter *board-size* 4)
-(defparameter *line-up-num* 4)
+(defparameter *board-size* 3)
+(defparameter *line-up-num* 3)
 (defparameter *board-hex-num* (* *board-size* *board-size*))
 
 (defparameter *player-a* 1)
@@ -13,11 +13,12 @@
 
 (defparameter *default-board*
 	(make-array *board-hex-num* :initial-element *buffer*))
-(defparameter *default-board*	#(0 0 0 0 0
+#|(defparameter *default-board*	#(0 0 0 0 0
 																0 1 1 2 0
 																0 2 2 1 0
                                 0 0 0 0 0
                                 0 0 0 0 0))
+|#
 
 (defparameter *board-hex-array*
 	(loop for x to (1- *board-hex-num*)
@@ -46,7 +47,6 @@
 				((eql n *player-b*) #\B)
 				((eql n *buffer*) #\*)
 				(t #\N)))
-
 
 (defun draw-board (board)
 	(loop for y below *board-size*
@@ -88,6 +88,7 @@
 	(evaluation 0)
 	(tree nil))
 
+
 (defun game-tree (player stair moving board &optional lazy-tree)
   (lazy (make-game-tree
          :player player
@@ -128,30 +129,29 @@
 	(cond ((win-judge player board) (- *win-point* stair))
         (t *draw-point*)))
 
-    
-
 (let ((old-eval-board (symbol-function 'eval-board))
       (previous (make-hash-table :test #'equalp)))
   (defun eval-board (player stair board)
     (or (gethash board previous)
         (setf (gethash board previous) (funcall old-eval-board player stair board)))))
 
-;;; ai 
+;;; min-max-way
 (defun rate-position (player lazy-tree)
 	(let ((tree (force lazy-tree)))
     (let ((moves (game-tree-tree tree))
-          (eval  (game-tree-evaluation tree)))
+          (eval  (game-tree-evaluation tree))
+          (reduce-function
+           #'(lambda (x y)
+               (if (> (car x) (car y)) x y))))
       (cond
         ((null moves) (cons eval (game-tree-moving tree)))
-        (t (reduce #'(lambda (x y)
-                       (if (> (car x) (car y))
-                           x y))
+        (t (reduce reduce-function
                    (get-ratings player tree)))))))
 
 (defun get-ratings (player tree)
 	(mapcar #'(lambda (move)
-						(rate-position player move ))
-					(game-tree-tree tree)))
+                   (rate-position player move ))
+       (game-tree-tree tree)))
 
 (defparameter *memo-used-time* 0)
 (defparameter *memoed-time* 0)
@@ -169,42 +169,49 @@
 
 (defun rate-test ()
   (let ((tree (game-tree *player-a* 0 '() *default-board*)))
-    (show-tree tree)
     (format t "A: ~d~%B: ~d" 
             (rate-position *player-a* tree)
             (rate-position *player-b* tree))))
 
-;;;; game
-(defun human-vs-human (lazy-tree)
+;;; monte-carlo tree-search
+(defun playout (player lazy-tree)
   (let ((tree (force lazy-tree)))
-    (print-info tree)
-    (let ((next-moves (game-tree-tree tree)))
-      (cond ((null next-moves)
-             (if (win-judge (game-tree-player tree) (game-tree-board tree))
-                 (announce-winner (game-tree-player tree))
-                 (announce-draw)))
-            (t (human-vs-human (handle-human tree)))))))
+    (show-line-info tree)
+    (cond ((win-judge (game-tree-player tree) (game-tree-board tree))
+           (= player (game-tree-player tree)))
+          ((null (game-tree-tree tree))
+           (= player (game-tree-player tree)))
+          (t (playout player
+                      (nth (random (+ *board-hex-num* (game-tree-stair tree)))
+                           (game-tree-tree tree)))))))
 
-(defun human-vs-computer (lazy-tree players-turn?)
+;;;; game
+
+(defun game (handle-func1 handle-func2 lazy-tree &key (info-function #'print-info))
   (let ((tree (force lazy-tree)))
-    (print-info tree)
+    (funcall info-function tree)
     (cond ((null (game-tree-tree tree))
            (if (win-judge (game-tree-player tree) (game-tree-board tree))
                (announce-winner (game-tree-player tree))
                (announce-draw)))
-          (t (human-vs-computer
-              (funcall (if players-turn? #'handle-human #'handle-computer) lazy-tree)
-              (not players-turn?))))))
+          (t (game
+              handle-func2 handle-func1
+              (funcall handle-func1 lazy-tree)
+              :info-function info-function)))))
+
+(defun human-vs-human (lazy-tree)
+  (game #'handle-human #'handle-human lazy-tree) )
+
+(defun human-vs-computer (lazy-tree &optional (player-initiative? t))
+  (multiple-value-bind (func1 func2)
+        (if player-initiative?
+            (values #'handle-human #'handle-computer)
+            (values #'handle-computer #'handle-human))
+    (game func1 func2 lazy-tree)))
 
 (defun computer-vs-computer (lazy-tree)
-  (let ((tree (force lazy-tree)))
-    (print-info tree)
-    (cond ((null (game-tree-tree tree))
-           (if (win-judge (game-tree-player tree) (game-tree-board tree))
-               (announce-winner (game-tree-player tree))
-               (announce-draw)))
-          (t (computer-vs-computer
-              (handle-computer lazy-tree))))))
+  (game #'handle-computer #'handle-computer lazy-tree) )
+
 
 (defun handle-human (lazy-tree)
   (let ((tree (force lazy-tree)))
@@ -218,7 +225,6 @@
               (format t "~a. -> put to ~a" n action)))
       (fresh-line)
       (nth (1- (read)) (game-tree-tree tree)))))
-
 
 (defun handle-computer (lazy-tree)
   (let ((tree (force lazy-tree)))
@@ -244,37 +250,19 @@
 
 ;;;; test
 
-(defun show-tree (tree &optional (stage 0))
-	(let ((player (game-tree-player tree))
-				(moving (game-tree-moving tree))
-				(board (game-tree-board tree))
-				(evaluation (game-tree-evaluation tree))
-				(next-tree-list (game-tree-tree tree))
-				(indent (concatenate 'string (loop for x below stage collect #\_))))
-		(format t "~d player:~d   moving:~d   board:~d  eval:~d~%"
-						indent player moving board evaluation)		
-		(mapcar #'(lambda (tr)
-								(show-tree tr (+ stage 4)))
-						next-tree-list)
-		nil))
-
-
 (defun ai-test (tree)
   (com-vs-com tree))
 
 (defun profile-n-moku ()
   (time (ai-test (game-tree *player-a* 0  '() *default-board*))))
-  
+
+(defun show-line-info (tree)
+  (format t "~% Player:~r, moving:~d, board:~a, eval:~d"
+          (game-tree-player tree)
+          (game-tree-moving tree)
+          (game-tree-board tree)
+          (game-tree-evaluation tree)))
+
+
 (defun com-vs-com (lazy-tree)
-  (let ((tree (force lazy-tree)))
-    (format t "~% Player:~r, moving:~d, board:~a, eval:~d"
-            (game-tree-player tree)
-            (game-tree-moving tree)
-            (game-tree-board tree)
-            (game-tree-evaluation tree))
-    (cond ((null (game-tree-tree tree))
-           (if (win-judge (game-tree-player tree) (game-tree-board tree))
-               (announce-winner (game-tree-player tree))
-               (announce-draw)))
-          (t (com-vs-com
-              (handle-computer lazy-tree))))))
+  (game #'handle-computer #'handle-computer lazy-tree :info-function #'show-line-info))
