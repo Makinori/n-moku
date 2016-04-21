@@ -13,11 +13,10 @@
 
 (defparameter *default-board*
 	(make-array *board-hex-num* :initial-element *buffer*))
-#|(defparameter *default-board*	#(0 0 0 0 0
-																0 1 1 2 0
-																0 2 2 1 0
-                                0 0 0 0 0
-                                0 0 0 0 0))
+#|(defparameter *default-board*	#(0 0 0 0
+                                0 2 1 0
+                                0 1 2 0
+                                0 0 0 0))
 |#
 
 (defparameter *board-hex-array*
@@ -63,21 +62,35 @@
 								 *board-hex-array*))
 
 (defun put-to-board (player moving board)
-	(coerce (loop for x to (1- *board-hex-num*)
-						 collect (if (eql x moving)
-												 player
-												 (aref board x)))
-					'vector))
+  (let ((copied-board (copy-seq board)))
+    (if moving
+        (setf (aref copied-board moving) player)
+        moving)
+    copied-board))
+
 
 (defun change-player (player)
 	(1+ (mod player *num-players*)))
 
-(defun win-judge (player board)
+#|(defun win-judge (player board)
 	(some #'(lambda (line)
 						(every #'(lambda (n)
 											 (eql (aref board n) player))
 									 line))
-				*win-lines*))
+				*win-lines*))|#
+
+(defun win-judge (player board)
+  (let ((player-line 0))
+    (loop for line in *eval-lines*
+       until (= player-line *line-up-num*)
+       do (setq player-line 0)
+         (loop for p in line
+            until (= player-line *line-up-num*)
+            do (if (= (aref board p) player)
+                   (incf player-line)
+                   (setq player-line 0))))
+         
+    (= player-line *line-up-num*)))
 
 ;;;; tree, AI
 (defstruct game-tree
@@ -90,7 +103,8 @@
 
 
 (defun game-tree (player stair moving board &optional lazy-tree)
-  (lazy (make-game-tree
+  (lazy (format t "1")
+        (make-game-tree
          :player player
          :moving moving
          :board board
@@ -174,16 +188,39 @@
             (rate-position *player-b* tree))))
 
 ;;; monte-carlo tree-search
-(defun playout (player lazy-tree)
+
+(defun test-playout ()
+  (time (dotimes (x 10000)
+          (playout *player-a* (game-tree *player-a* 0 '() *default-board*)))))
+
+(defun monte-carlo (player lazy-tree)
+  (let* ((tree  (force lazy-tree))
+         (move-result-list (make-array (length (game-tree-tree tree))
+                                       :initial-element (cons 0 0)))
+         (result nil)
+         (result-address nil))
+    (labels
+        ((reflect-playout (remaining-time)
+           (when (> remaining-time 0)
+             (setq result (playout player lazy-tree))
+             (setq result-address (aref move-result-list (cdr result)))
+             (setf (aref move-result-list (cdr result))
+                   (cons (+ (car result-address) (if (car result) 1 0))
+                         (+ (cdr result-address) 1)))
+             (reflect-playout (1- remaining-time)))))
+      (reflect-playout 100)
+      move-result-list)))
+
+
+(defun playout (player lazy-tree &optional first-way)
+  (print lazy-tree)
   (let ((tree (force lazy-tree)))
-    (show-line-info tree)
-    (cond ((win-judge (game-tree-player tree) (game-tree-board tree))
-           (= player (game-tree-player tree)))
-          ((null (game-tree-tree tree))
-           (= player (game-tree-player tree)))
-          (t (playout player
-                      (nth (random (+ *board-hex-num* (game-tree-stair tree)))
-                           (game-tree-tree tree)))))))
+    (cond ((or (win-judge (game-tree-player tree) (game-tree-board tree))
+               (null (game-tree-tree tree)))
+           (cons (= player (game-tree-player tree)) first-way))
+          (t (let ((next-choose (random (- *board-hex-num* (game-tree-stair tree)))))
+               (playout player (nth next-choose (game-tree-tree tree))
+                        (if first-way first-way next-choose)))))))
 
 ;;;; game
 
@@ -200,7 +237,7 @@
               :info-function info-function)))))
 
 (defun human-vs-human (lazy-tree)
-  (game #'handle-human #'handle-human lazy-tree) )
+  (game #'handle-human #'handle-human lazy-tree))
 
 (defun human-vs-computer (lazy-tree &optional (player-initiative? t))
   (multiple-value-bind (func1 func2)
@@ -254,7 +291,14 @@
   (com-vs-com tree))
 
 (defun profile-n-moku ()
-  (time (ai-test (game-tree *player-a* 0  '() *default-board*))))
+  (sb-profile:unprofile)
+  (sb-profile:profile "N-MOKU" "CL-USER")
+  (time 
+   ;;(com-vs-com (game-tree 1 0 '() *default-board*)))
+   ;;(monte-carlo *player-a* (game-tree *player-a* 0 '() *default-board*)))
+   (human-vs-human (game-tree *player-b* 0 '() *default-board*)))
+  (sb-profile:report)
+  (sb-profile:unprofile))
 
 (defun show-line-info (tree)
   (format t "~% Player:~r, moving:~d, board:~a, eval:~d"
