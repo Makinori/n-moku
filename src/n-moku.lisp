@@ -1,10 +1,9 @@
-;;(in-package :n-moku)
 (in-package #:n-moku)
 
 ;;;; parameters
 (defparameter *num-players* 2)
-(defparameter *board-size* 3)
-(defparameter *line-up-num* 3)
+(defparameter *board-size* 4)
+(defparameter *line-up-num* 4)
 (defparameter *board-hex-num* (* *board-size* *board-size*))
 
 (defparameter *player-a* 1)
@@ -48,29 +47,35 @@
 				(t #\N)))
 
 (defun draw-board (board)
-	(loop for y below *board-size*
+  (loop for y below *board-size*
 		 do (progn (fresh-line)
 							 (loop for x below *board-size*
 									do (format t "~a " (player-latter
 																			(aref board (+ x (* *board-size* y)))))))))
-
-
 ;;;; rule-base
 (defun putable-address (board)
 	(remove-if-not (lambda (n)
 									 (eq *buffer* (aref board n)))
 								 *board-hex-array*))
 
-(defun put-to-board (player moving board)
-  (let ((copied-board (copy-seq board)))
+(let ((copied-board))
+  (defun put-to-board (player moving board)
+    (setf copied-board (copy-seq board))
     (if moving
         (setf (aref copied-board moving) player)
         moving)
     copied-board))
 
+(defun put-test ()
+  (let ((tree (force (game-tree *player-a* 0 '() *default-board*))))
+    (put-to-board (game-tree-player tree) 10
+                         (game-tree-board tree))))
+
 
 (defun change-player (player)
 	(1+ (mod player *num-players*)))
+
+
 
 #|(defun win-judge (player board)
 	(some #'(lambda (line)
@@ -78,6 +83,12 @@
 											 (eql (aref board n) player))
 									 line))
 				*win-lines*))|#
+
+(defun random-board ()
+  (coerce
+   (loop for x in (coerce *default-board* 'list)
+      collect (random 3))
+   'vector))
 
 (defun win-judge (player board)
   (let ((player-line 0))
@@ -88,9 +99,9 @@
             until (= player-line *line-up-num*)
             do (if (= (aref board p) player)
                    (incf player-line)
-                   (setq player-line 0))))
-         
+                   (setq player-line 0))))         
     (= player-line *line-up-num*)))
+
 
 ;;;; tree, AI
 (defstruct game-tree
@@ -101,30 +112,34 @@
 	(evaluation 0)
 	(tree nil))
 
-
 (defun game-tree (player stair moving board &optional lazy-tree)
-  (lazy (format t "1")
-        (make-game-tree
-         :player player
-         :moving moving
-         :board board
-         :stair stair
-         :evaluation (eval-board player stair board)
-         :tree (cond (lazy-tree lazy-tree)
-                     ((win-judge player board) nil)
-                     (t (passing-moves player (1+ stair) board))))))
+  (lazy (search-game-tree player stair moving board lazy-tree)))
+
+(defun search-game-tree (player stair moving board &optional lazy-tree)
+  (make-game-tree
+   :player player
+   :moving moving
+   :board board
+   :stair stair
+   :evaluation (eval-board player stair board)
+   :tree (cond (lazy-tree lazy-tree)
+               ((win-judge player board) nil)
+               (t (passing-moves player (1+ stair) board)))))
+
+
 
 (defun passing-moves (player stair board)
-	(let* ((next-player (change-player player))
-				 (able-moves (putable-address board)))
+	(let ((next-player (change-player player)))
 		(mapcar
 		 #'(lambda (moving)
-				 (game-tree next-player stair moving (put-to-board next-player moving board)))
-		 able-moves)))
+				 (lazy (search-game-tree next-player
+                                 stair moving (put-to-board next-player moving board))))
+		 (putable-address board))))
 
 (defparameter *memod-time* 0)
 (defparameter *memo-time* 0)
 
+#|
 (let ((old-game-tree (symbol-function 'game-tree))
       (previous (make-hash-table :test #'equalp))) ;;tree-list :: game-tree-tree
   (defun game-tree (player stair moving board)
@@ -133,7 +148,7 @@
         (let ((game-tree (funcall old-game-tree player stair moving board)))
           (setf (gethash board previous) (game-tree-tree (force game-tree)))
           game-tree))))
-
+|#
 
 (defparameter *win-point* 100)
 (defparameter *draw-point* 0)
@@ -187,40 +202,6 @@
             (rate-position *player-a* tree)
             (rate-position *player-b* tree))))
 
-;;; monte-carlo tree-search
-
-(defun test-playout ()
-  (time (dotimes (x 10000)
-          (playout *player-a* (game-tree *player-a* 0 '() *default-board*)))))
-
-(defun monte-carlo (player lazy-tree)
-  (let* ((tree  (force lazy-tree))
-         (move-result-list (make-array (length (game-tree-tree tree))
-                                       :initial-element (cons 0 0)))
-         (result nil)
-         (result-address nil))
-    (labels
-        ((reflect-playout (remaining-time)
-           (when (> remaining-time 0)
-             (setq result (playout player lazy-tree))
-             (setq result-address (aref move-result-list (cdr result)))
-             (setf (aref move-result-list (cdr result))
-                   (cons (+ (car result-address) (if (car result) 1 0))
-                         (+ (cdr result-address) 1)))
-             (reflect-playout (1- remaining-time)))))
-      (reflect-playout 100)
-      move-result-list)))
-
-
-(defun playout (player lazy-tree &optional first-way)
-  (print lazy-tree)
-  (let ((tree (force lazy-tree)))
-    (cond ((or (win-judge (game-tree-player tree) (game-tree-board tree))
-               (null (game-tree-tree tree)))
-           (cons (= player (game-tree-player tree)) first-way))
-          (t (let ((next-choose (random (- *board-hex-num* (game-tree-stair tree)))))
-               (playout player (nth next-choose (game-tree-tree tree))
-                        (if first-way first-way next-choose)))))))
 
 ;;;; game
 
@@ -295,8 +276,10 @@
   (sb-profile:profile "N-MOKU" "CL-USER")
   (time 
    ;;(com-vs-com (game-tree 1 0 '() *default-board*)))
-   ;;(monte-carlo *player-a* (game-tree *player-a* 0 '() *default-board*)))
-   (human-vs-human (game-tree *player-b* 0 '() *default-board*)))
+   (monte-carlo *player-a* (game-tree *player-a* 0 '() *default-board*)))
+   ;;(human-vs-human (game-tree *player-b* 0 '() *default-board*)))
+   ;;(dotimes (x 50) (playout *player-a* (game-tree *player-a* 0 '() *default-board*)) )
+   ;;(dotimes (x 100) (call/playout *player-a* *default-board* 0)))
   (sb-profile:report)
   (sb-profile:unprofile))
 

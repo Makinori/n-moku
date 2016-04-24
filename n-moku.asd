@@ -12,7 +12,7 @@
   :author "Makinori Ikegami"
   :licence "GPL"
   
-  :depends-on ()
+  :depends-on (:ltk)
   
   :serial t
   :components
@@ -23,7 +23,9 @@
                            (:file "lazy")))
    (:module src
     :pathname "src"
-              :components ((:file "n-moku")))))
+              :components ((:file "n-moku")
+                           (:file "mcts")
+                           (:file "gui")))))
 
 
 
