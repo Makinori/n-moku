@@ -2,8 +2,8 @@
 
 ;;;; parameters
 (defparameter *num-players* 2)
-(defparameter *board-size* 4)
-(defparameter *line-up-num* 4)
+(defparameter *board-size* 15)
+(defparameter *line-up-num* 5)
 (defparameter *board-hex-num* (* *board-size* *board-size*))
 
 (defparameter *player-a* 1)
