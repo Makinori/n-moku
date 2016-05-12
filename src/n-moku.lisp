@@ -2,7 +2,7 @@
 
 ;;;; parameters
 (defparameter *num-players* 2)
-(defparameter *board-size* 15)
+(defparameter *board-size* 16)
 (defparameter *line-up-num* 5)
 (defparameter *board-hex-num* (* *board-size* *board-size*))
 

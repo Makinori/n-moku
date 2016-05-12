@@ -78,6 +78,17 @@
                    (cons (+ (car result-address) (if (car result) 1 0))
                          (+ (cdr result-address) 1)))
              (reflect-playout (1- remaining-time)))))
-      (reflect-playout 10000)
+      (reflect-playout 1000)
       move-result-list)))
 
+(defun handle-monte-carlo (lazy-tree)
+  (let ((playout (mapcar
+                  #'(lambda (res hex)
+                      (cons res hex))
+                  (coerce (monte-carlo (game-tree-player (force lazy-tree)) lazy-tree)
+                          'list)
+                  *board-hex-array*)))
+    (car (sort playout #'(lambda (x y) (> (handler-case (/ (caar x) (cdar x))
+                                            (division-by-zero () 0))
+                                          (handler-case (/ (caar y) (cdar x))
+                                            (division-by-zero () 0))))))))
