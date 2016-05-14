@@ -2,7 +2,7 @@
 
 ;;;; parameters
 (defparameter *num-players* 2)
-(defparameter *board-size* 16)
+(defparameter *board-size* 9)
 (defparameter *line-up-num* 5)
 (defparameter *board-hex-num* (* *board-size* *board-size*))
 
@@ -52,6 +52,14 @@
 							 (loop for x below *board-size*
 									do (format t "~a " (player-latter
 																			(aref board (+ x (* *board-size* y)))))))))
+
+(defun address-to-tree (address tree-tree)
+  (reduce #'(lambda (x y)
+              (cond (x x)
+                    ((= address (game-tree-moving (force y)))  y)
+                    (t nil)))
+          tree-tree :initial-value nil))
+
 ;;;; rule-base
 (defun putable-address (board)
 	(remove-if-not (lambda (n)
@@ -283,8 +291,8 @@
   (sb-profile:report)
   (sb-profile:unprofile))
 
-(defun show-line-info (tree)
-  (format t "~% Player:~r, moving:~d, board:~a, eval:~d"
+(defun show-line-info (tree &optional (format-type t) )
+  (format format-type "~% Player:~r, moving:~d, board:~a, eval:~d"
           (game-tree-player tree)
           (game-tree-moving tree)
           (game-tree-board tree)
